@@ -1,0 +1,102 @@
+const express = require('express');
+const {
+  findCustomerByEmail,
+  createCustomerAddress,
+  updateCustomerAddress,
+  updateCustomerDefaultAddress,
+} = require('../utils/shopifyGraphQL');
+
+const router = express.Router();
+
+/**
+ * POST /api/address/save
+ *
+ * Body:
+ * {
+ *   "email": "customer@example.com",
+ *   "address": {
+ *     "formatted": "Jl. Raya Kuta No.1, Kuta, Kec. Kuta, Kabupaten Badung, Bali 80361, Indonesia",
+ *     "lat": -8.7234,
+ *     "lng": 115.1700,
+ *     "extra": "Floor 3, near lobby"
+ *   }
+ * }
+ *
+ * Flow:
+ *   1. Find customer by email via Shopify Admin GraphQL
+ *   2. If customer has a default address → update it
+ *   3. If customer has no addresses → create one and set as default
+ */
+router.post('/save', async (req, res) => {
+  try {
+    const { email, address } = req.body;
+
+    // ── Validation ───────────────────────────────
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+    if (!address || !address.formatted) {
+      return res.status(400).json({ success: false, error: 'Address is required' });
+    }
+
+    // ── Find customer ────────────────────────────
+    const customer = await findCustomerByEmail(email);
+    if (!customer) {
+      return res.status(404).json({ success: false, error: 'Customer not found in Shopify' });
+    }
+
+    console.log(`[Address] Found customer ${customer.id} (${customer.email})`);
+
+    let result;
+
+    if (customer.defaultAddress && customer.defaultAddress.id) {
+      // ── Update existing default address ────────
+      console.log(`[Address] Updating default address: ${customer.defaultAddress.id}`);
+      result = await updateCustomerAddress(
+        customer.id,
+        customer.defaultAddress.id,
+        address
+      );
+
+      const userErrors = result?.data?.customerAddressUpdate?.userErrors;
+      if (userErrors && userErrors.length > 0) {
+        console.error('[Address] userErrors:', userErrors);
+        return res.status(400).json({ success: false, error: userErrors[0].message, userErrors });
+      }
+
+      return res.json({
+        success: true,
+        action: 'updated',
+        address: result?.data?.customerAddressUpdate?.address,
+      });
+    } else {
+      // ── Create new address ─────────────────────
+      console.log(`[Address] Creating new address for customer: ${customer.id}`);
+      result = await createCustomerAddress(customer.id, address);
+
+      const userErrors = result?.data?.customerAddressCreate?.userErrors;
+      if (userErrors && userErrors.length > 0) {
+        console.error('[Address] userErrors:', userErrors);
+        return res.status(400).json({ success: false, error: userErrors[0].message, userErrors });
+      }
+
+      const newAddress = result?.data?.customerAddressCreate?.address;
+
+      // Set the new address as default
+      if (newAddress && newAddress.id) {
+        await updateCustomerDefaultAddress(customer.id, newAddress.id);
+      }
+
+      return res.json({
+        success: true,
+        action: 'created',
+        address: newAddress,
+      });
+    }
+  } catch (err) {
+    console.error('[Address] Error saving address:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+module.exports = router;
