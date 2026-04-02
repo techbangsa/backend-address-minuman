@@ -114,26 +114,38 @@ async function createCustomerAddress(customerId, addressData) {
     }
   `;
 
-  const parsed = parseFormattedAddress(addressData.formatted);
+  // Use parsed components from frontend if available, fall back to string parsing
+  const hasParsedComponents = addressData.district || addressData.city || addressData.province;
+  const parsed = hasParsedComponents ? null : parseFormattedAddress(addressData.formatted);
 
-  // Store lat/lng + extra details in address2 for reference
-  const address2Parts = [];
-  if (addressData.lat && addressData.lng) {
-    address2Parts.push(`[${addressData.lat},${addressData.lng}]`);
+  // Build address1 — street address + extra details
+  let address1 = '';
+  if (hasParsedComponents) {
+    // Use formatted address as street, but strip city/province/country/zip parts
+    address1 = addressData.formatted || '';
+  } else {
+    address1 = parsed.address1 || addressData.formatted;
   }
+
+  // Append extra details (floor, unit, landmark) to address1
   if (addressData.extra) {
-    address2Parts.push(addressData.extra);
+    address1 = address1 + ' | ' + addressData.extra;
   }
+
+  // address2 = District / Kecamatan name (NOT coordinates)
+  const address2 = hasParsedComponents
+    ? (addressData.district || '')
+    : '';
 
   const variables = {
     customerId,
     address: {
-      address1: parsed.address1 || addressData.formatted,
-      address2: address2Parts.join(' | ') || '',
-      city: parsed.city || '',
-      province: parsed.province || '',
-      country: parsed.country || 'Indonesia',
-      zip: parsed.zip || '',
+      address1: address1,
+      address2: address2,
+      city: (hasParsedComponents ? addressData.city : parsed.city) || '',
+      province: (hasParsedComponents ? addressData.province : parsed.province) || '',
+      country: (hasParsedComponents ? addressData.country : parsed.country) || 'Indonesia',
+      zip: (hasParsedComponents ? addressData.zip : parsed.zip) || '',
     },
   };
 
@@ -192,26 +204,38 @@ async function updateCustomerAddress(customerId, addressId, addressData) {
     }
   `;
 
-  const parsed = parseFormattedAddress(addressData.formatted);
+  // Use parsed components from frontend if available, fall back to string parsing
+  const hasParsedComponents = addressData.district || addressData.city || addressData.province;
+  const parsed = hasParsedComponents ? null : parseFormattedAddress(addressData.formatted);
 
-  const address2Parts = [];
-  if (addressData.lat && addressData.lng) {
-    address2Parts.push(`[${addressData.lat},${addressData.lng}]`);
+  // Build address1 — street address + extra details
+  let address1 = '';
+  if (hasParsedComponents) {
+    address1 = addressData.formatted || '';
+  } else {
+    address1 = parsed.address1 || addressData.formatted;
   }
+
+  // Append extra details (floor, unit, landmark) to address1
   if (addressData.extra) {
-    address2Parts.push(addressData.extra);
+    address1 = address1 + ' | ' + addressData.extra;
   }
+
+  // address2 = District / Kecamatan name (NOT coordinates)
+  const address2 = hasParsedComponents
+    ? (addressData.district || '')
+    : '';
 
   const variables = {
     customerId,
     addressId,
     address: {
-      address1: parsed.address1 || addressData.formatted,
-      address2: address2Parts.join(' | ') || '',
-      city: parsed.city || '',
-      province: parsed.province || '',
-      country: parsed.country || 'Indonesia',
-      zip: parsed.zip || '',
+      address1: address1,
+      address2: address2,
+      city: (hasParsedComponents ? addressData.city : parsed.city) || '',
+      province: (hasParsedComponents ? addressData.province : parsed.province) || '',
+      country: (hasParsedComponents ? addressData.country : parsed.country) || 'Indonesia',
+      zip: (hasParsedComponents ? addressData.zip : parsed.zip) || '',
     },
   };
 
