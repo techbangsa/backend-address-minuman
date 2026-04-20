@@ -29,7 +29,7 @@ const router = express.Router();
  */
 router.post('/save', async (req, res) => {
   try {
-    const { email, address } = req.body;
+    const { email, address, action, addressId } = req.body;
 
     // ── Validation ───────────────────────────────
     if (!email) {
@@ -49,12 +49,12 @@ router.post('/save', async (req, res) => {
 
     let result;
 
-    if (customer.defaultAddress && customer.defaultAddress.id) {
-      // ── Update existing default address ────────
-      console.log(`[Address] Updating default address: ${customer.defaultAddress.id}`);
+    // ── Explicit UPDATE: only when frontend sends action:"update" + addressId ──
+    if (action === 'update' && addressId) {
+      console.log(`[Address] Updating address: ${addressId}`);
       result = await updateCustomerAddress(
         customer.id,
-        customer.defaultAddress.id,
+        addressId,
         address
       );
 
@@ -70,7 +70,7 @@ router.post('/save', async (req, res) => {
         address: result?.data?.customerAddressUpdate?.address,
       });
     } else {
-      // ── Create new address ─────────────────────
+      // ── Default: always CREATE a new address ─────────────────────
       console.log(`[Address] Creating new address for customer: ${customer.id}`);
       result = await createCustomerAddress(customer.id, address);
 
@@ -82,8 +82,8 @@ router.post('/save', async (req, res) => {
 
       const newAddress = result?.data?.customerAddressCreate?.address;
 
-      // Set the new address as default
-      if (newAddress && newAddress.id) {
+      // Set the new address as default if customer had no addresses before
+      if (newAddress && newAddress.id && !customer.defaultAddress) {
         await updateCustomerDefaultAddress(customer.id, newAddress.id);
       }
 
