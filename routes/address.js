@@ -131,8 +131,9 @@ router.post('/set-default', async (req, res) => {
     // Find the matching address from customer's addresses to get the GID
     const matchedAddress = customer.addresses.find(a => {
       // Compare by numeric ID (addressId from frontend is numeric, Shopify uses GID)
+      // GID format: gid://shopify/MailingAddress/12345?customer_id=...
       const numericId = String(addressId);
-      return a.id === addressId || a.id.endsWith('/' + numericId);
+      return a.id === addressId || a.id.includes('/' + numericId + '?') || a.id.endsWith('/' + numericId);
     });
 
     if (!matchedAddress) {
