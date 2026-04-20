@@ -99,4 +99,63 @@ router.post('/save', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/address/set-default
+ *
+ * Body:
+ * {
+ *   "email": "customer@example.com",
+ *   "addressId": "gid://shopify/MailingAddress/123456"
+ * }
+ *
+ * Sets the specified address as the customer's default address in Shopify.
+ */
+router.post('/set-default', async (req, res) => {
+  try {
+    const { email, addressId } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+    if (!addressId) {
+      return res.status(400).json({ success: false, error: 'Address ID is required' });
+    }
+
+    const customer = await findCustomerByEmail(email);
+    if (!customer) {
+      return res.status(404).json({ success: false, error: 'Customer not found in Shopify' });
+    }
+
+    console.log(`[Address] Setting default address for ${customer.id}: ${addressId}`);
+
+    // Find the matching address from customer's addresses to get the GID
+    const matchedAddress = customer.addresses.find(a => {
+      // Compare by numeric ID (addressId from frontend is numeric, Shopify uses GID)
+      const numericId = String(addressId);
+      return a.id === addressId || a.id.endsWith('/' + numericId);
+    });
+
+    if (!matchedAddress) {
+      return res.status(404).json({ success: false, error: 'Address not found for this customer' });
+    }
+
+    const result = await updateCustomerDefaultAddress(customer.id, matchedAddress.id);
+
+    const userErrors = result?.data?.customerUpdateDefaultAddress?.userErrors;
+    if (userErrors && userErrors.length > 0) {
+      console.error('[Address] userErrors:', userErrors);
+      return res.status(400).json({ success: false, error: userErrors[0].message, userErrors });
+    }
+
+    return res.json({
+      success: true,
+      action: 'default_updated',
+      defaultAddress: result?.data?.customerUpdateDefaultAddress?.customer?.defaultAddress,
+    });
+  } catch (err) {
+    console.error('[Address] Error setting default address:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
 module.exports = router;
