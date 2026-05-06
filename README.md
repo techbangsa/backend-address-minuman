@@ -5,7 +5,7 @@ Service ini adalah backend Express untuk menyimpan dan mengatur alamat customer 
 ## Base URL
 
 - Local: `http://localhost:3000`
-- Production: sesuaikan dengan URL deployment (mis. Vercel)
+- Production: `https://backend-address-minuman.vercel.app`
 
 ## Endpoint Overview
 
@@ -59,10 +59,11 @@ Endpoint utama untuk menyimpan alamat.
 ### Optional / Recommended Headers
 
 - `Accept: application/json`
-- `Authorization: Bearer <token>` (opsional, saat ini belum divalidasi oleh server)
-- `Origin: <your-frontend-domain>` (otomatis saat dipanggil dari browser)
 
-> Catatan CORS: origin yang diizinkan dikontrol di server. Untuk browser client, pastikan request datang dari domain yang sudah di-allow.
+> **Catatan CORS:**
+> - **Browser**: `Origin` header dikirim otomatis. Origin yang diizinkan: `minumancom.myshopify.com`, `minuman.com`, `www.minuman.com`, serta semua `*.myshopify.com`.
+> - **Mobile App (Android/iOS/Flutter/React Native)**: tidak mengirim `Origin` header → server langsung mengizinkan, **tidak ada konfigurasi CORS yang diperlukan**.
+> - **Server-to-server / curl**: sama seperti mobile, tidak ada CORS.
 
 ### Request Body (minimum)
 
@@ -168,7 +169,8 @@ Set alamat tertentu sebagai default address customer.
 ### Optional / Recommended Headers
 
 - `Accept: application/json`
-- `Authorization: Bearer <token>` (opsional, saat ini belum divalidasi)
+
+> **Catatan CORS:** Mobile app dan server-to-server tidak perlu khawatir soal CORS. Lihat penjelasan lengkap di endpoint `/save` di atas.
 
 ### Request Body
 
@@ -223,11 +225,16 @@ Set alamat tertentu sebagai default address customer.
    - `404`: resource/customer/address tidak ditemukan
    - `500`: retry terbatas + log untuk investigasi
 
-5. **Jangan kirim data sensitif berlebihan**
-   - Cukup field yang dibutuhkan endpoint
-   - Hindari menyimpan token di localStorage tanpa proteksi
+5. **CORS hanya masalah browser**
+   - Mobile apps (Flutter, React Native, Swift, Kotlin) tidak perlu header CORS apapun
+   - Server sudah handle preflight (`OPTIONS`) secara otomatis untuk browser
+   - Domain yang di-allow: `minuman.com`, `www.minuman.com`, `*.myshopify.com`
 
-6. **Tambahkan timeout & retry policy di client**
+6. **Jangan kirim data sensitif berlebihan**
+   - Cukup field yang dibutuhkan endpoint
+   - Server tidak membutuhkan `Authorization` header — tidak perlu dikirim
+
+7. **Tambahkan timeout & retry policy di client**
    - Gunakan timeout request (mis. 10-15 detik)
    - Retry hanya untuk error transient (`500`, network error), bukan untuk `400`
 
