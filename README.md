@@ -2,9 +2,7 @@
 
 Service ini adalah backend Express untuk menyimpan dan mengatur alamat customer di Shopify via Admin GraphQL API.
 
-## Base URL
-
-- Local: `http://localhost:3000`
+## Base URL (Endpoint)
 - Production: `https://backend-address-minuman.vercel.app`
 
 ## Endpoint Overview

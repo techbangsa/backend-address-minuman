@@ -46,6 +46,10 @@ async function findCustomerByEmail(email) {
             }
             addresses {
               id
+              firstName
+              lastName
+              company
+              phone
               address1
               address2
               city
@@ -230,12 +234,16 @@ async function updateCustomerAddress(customerId, addressId, addressData) {
     customerId,
     addressId,
     address: {
-      address1: address1,
-      address2: address2,
-      city: (hasParsedComponents ? addressData.city : parsed.city) || '',
+      firstName: addressData.firstName || '',
+      lastName:  addressData.lastName  || '',
+      company:   addressData.company   || '',
+      phone:     addressData.phone     || '',
+      address1:  address1,
+      address2:  address2,
+      city:     (hasParsedComponents ? addressData.city     : parsed.city)     || '',
       province: (hasParsedComponents ? addressData.province : parsed.province) || '',
-      country: (hasParsedComponents ? addressData.country : parsed.country) || 'Indonesia',
-      zip: (hasParsedComponents ? addressData.zip : parsed.zip) || '',
+      country:  (hasParsedComponents ? addressData.country  : parsed.country)  || 'Indonesia',
+      zip:      (hasParsedComponents ? addressData.zip      : parsed.zip)      || '',
     },
   };
 
@@ -245,11 +253,33 @@ async function updateCustomerAddress(customerId, addressId, addressData) {
   return result;
 }
 
+/**
+ * Delete a customer address by its Shopify GID
+ */
+async function deleteCustomerAddress(customerId, addressId) {
+  const mutation = `
+    mutation customerAddressDelete($customerId: ID!, $addressId: ID!) {
+      customerAddressDelete(customerId: $customerId, addressId: $addressId) {
+        deletedCustomerAddressId
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const result = await shopifyGraphQL(mutation, { customerId, addressId });
+  console.log('[ShopifyGQL] deleteCustomerAddress result:', JSON.stringify(result, null, 2));
+  return result;
+}
+
 module.exports = {
   shopifyGraphQL,
   findCustomerByEmail,
   createCustomerAddress,
   updateCustomerAddress,
   updateCustomerDefaultAddress,
+  deleteCustomerAddress,
   parseFormattedAddress,
 };
