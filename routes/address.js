@@ -14,6 +14,7 @@ const router = express.Router();
  *
  * Body:
  * {
+ *   "request_from": "kapittal",          // optional — omit for minuman (default store)
  *   "email": "customer@example.com",
  *   "address": {
  *     "formatted": "Jl. Raya Kuta No.1, Kuta, Kec. Kuta, Kabupaten Badung, Bali 80361, Indonesia",
@@ -22,17 +23,12 @@ const router = express.Router();
  *     "extra": "Floor 3, near lobby"
  *   }
  * }
- *
- * Flow:
- *   1. Find customer by email via Shopify Admin GraphQL
- *   2. If customer has a default address → update it
- *   3. If customer has no addresses → create one and set as default
  */
 router.post('/save', async (req, res) => {
   try {
     const { email, address, action, addressId } = req.body;
+    const storeConfig = req.storeConfig;
 
-    // ── Validation ───────────────────────────────
     if (!email) {
       return res.status(400).json({ success: false, error: 'Email is required' });
     }
@@ -40,24 +36,18 @@ router.post('/save', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Address is required' });
     }
 
-    // ── Find customer ────────────────────────────
-    const customer = await findCustomerByEmail(email);
+    const customer = await findCustomerByEmail(email, storeConfig);
     if (!customer) {
       return res.status(404).json({ success: false, error: 'Customer not found in Shopify' });
     }
 
-    console.log(`[Address] Found customer ${customer.id} (${customer.email})`);
+    console.log(`[Address][${storeConfig.storeName}] Found customer ${customer.id} (${customer.email})`);
 
     let result;
 
-    // ── Explicit UPDATE: only when frontend sends action:"update" + addressId ──
     if (action === 'update' && addressId) {
-      console.log(`[Address] Updating address: ${addressId}`);
-      result = await updateCustomerAddress(
-        customer.id,
-        addressId,
-        address
-      );
+      console.log(`[Address][${storeConfig.storeName}] Updating address: ${addressId}`);
+      result = await updateCustomerAddress(customer.id, addressId, address, storeConfig);
 
       const userErrors = result?.data?.customerAddressUpdate?.userErrors;
       if (userErrors && userErrors.length > 0) {
@@ -71,9 +61,8 @@ router.post('/save', async (req, res) => {
         address: result?.data?.customerAddressUpdate?.address,
       });
     } else {
-      // ── Default: always CREATE a new address ─────────────────────
-      console.log(`[Address] Creating new address for customer: ${customer.id}`);
-      result = await createCustomerAddress(customer.id, address);
+      console.log(`[Address][${storeConfig.storeName}] Creating new address for customer: ${customer.id}`);
+      result = await createCustomerAddress(customer.id, address, storeConfig);
 
       const userErrors = result?.data?.customerAddressCreate?.userErrors;
       if (userErrors && userErrors.length > 0) {
@@ -83,9 +72,8 @@ router.post('/save', async (req, res) => {
 
       const newAddress = result?.data?.customerAddressCreate?.address;
 
-      // Set the new address as default if customer had no addresses before
       if (newAddress && newAddress.id && !customer.defaultAddress) {
-        await updateCustomerDefaultAddress(customer.id, newAddress.id);
+        await updateCustomerDefaultAddress(customer.id, newAddress.id, storeConfig);
       }
 
       return res.json({
@@ -105,15 +93,15 @@ router.post('/save', async (req, res) => {
  *
  * Body:
  * {
+ *   "request_from": "kapittal",          // optional
  *   "email": "customer@example.com",
  *   "addressId": "gid://shopify/MailingAddress/123456"
  * }
- *
- * Sets the specified address as the customer's default address in Shopify.
  */
 router.post('/set-default', async (req, res) => {
   try {
     const { email, addressId } = req.body;
+    const storeConfig = req.storeConfig;
 
     if (!email) {
       return res.status(400).json({ success: false, error: 'Email is required' });
@@ -122,26 +110,25 @@ router.post('/set-default', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Address ID is required' });
     }
 
-    const customer = await findCustomerByEmail(email);
+    const customer = await findCustomerByEmail(email, storeConfig);
     if (!customer) {
       return res.status(404).json({ success: false, error: 'Customer not found in Shopify' });
     }
 
-    console.log(`[Address] Setting default address for ${customer.id}: ${addressId}`);
+    console.log(`[Address][${storeConfig.storeName}] Setting default address for ${customer.id}: ${addressId}`);
 
-    // Find the matching address from customer's addresses to get the GID
-    const matchedAddress = customer.addresses.find(a => {
-      // Compare by numeric ID (addressId from frontend is numeric, Shopify uses GID)
-      // GID format: gid://shopify/MailingAddress/12345?customer_id=...
-      const numericId = String(addressId);
-      return a.id === addressId || a.id.includes('/' + numericId + '?') || a.id.endsWith('/' + numericId);
-    });
+    const numericId = String(addressId);
+    const matchedAddress = customer.addresses.find(a =>
+      a.id === addressId ||
+      a.id.includes('/' + numericId + '?') ||
+      a.id.endsWith('/' + numericId)
+    );
 
     if (!matchedAddress) {
       return res.status(404).json({ success: false, error: 'Address not found for this customer' });
     }
 
-    const result = await updateCustomerDefaultAddress(customer.id, matchedAddress.id);
+    const result = await updateCustomerDefaultAddress(customer.id, matchedAddress.id, storeConfig);
 
     const userErrors = result?.data?.customerUpdateDefaultAddress?.userErrors;
     if (userErrors && userErrors.length > 0) {
@@ -165,29 +152,26 @@ router.post('/set-default', async (req, res) => {
  *
  * Body:
  * {
+ *   "request_from": "kapittal",          // optional
  *   "email": "customer@example.com",
  *   "addressId": "12345678",
- *   "address": {
- *     "firstName": "...", "lastName": "...", "company": "...",
- *     "address1": "...", "phone": "...",
- *     "city": "...", "province": "...", "zip": "...", "country": "Indonesia"
- *   }
+ *   "address": { ... }
  * }
  */
 router.post('/update', async (req, res) => {
   try {
     const { email, addressId, address } = req.body;
+    const storeConfig = req.storeConfig;
 
     if (!email)     return res.status(400).json({ success: false, error: 'Email is required' });
     if (!addressId) return res.status(400).json({ success: false, error: 'Address ID is required' });
     if (!address)   return res.status(400).json({ success: false, error: 'Address data is required' });
 
-    const customer = await findCustomerByEmail(email);
+    const customer = await findCustomerByEmail(email, storeConfig);
     if (!customer) {
       return res.status(404).json({ success: false, error: 'Customer not found in Shopify' });
     }
 
-    // Resolve numeric/short ID to the full Shopify GID
     const numericId = String(addressId);
     const matched = customer.addresses.find(a =>
       a.id === addressId ||
@@ -199,9 +183,9 @@ router.post('/update', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Address not found for this customer' });
     }
 
-    console.log(`[Address] Updating address ${matched.id} for customer ${customer.id}`);
+    console.log(`[Address][${storeConfig.storeName}] Updating address ${matched.id} for customer ${customer.id}`);
 
-    const result = await updateCustomerAddress(customer.id, matched.id, address);
+    const result = await updateCustomerAddress(customer.id, matched.id, address, storeConfig);
 
     const userErrors = result?.data?.customerAddressUpdate?.userErrors;
     if (userErrors && userErrors.length > 0) {
@@ -224,6 +208,7 @@ router.post('/update', async (req, res) => {
  *
  * Body:
  * {
+ *   "request_from": "kapittal",          // optional
  *   "email": "customer@example.com",
  *   "addressId": "12345678"
  * }
@@ -231,16 +216,16 @@ router.post('/update', async (req, res) => {
 router.post('/delete', async (req, res) => {
   try {
     const { email, addressId } = req.body;
+    const storeConfig = req.storeConfig;
 
     if (!email)     return res.status(400).json({ success: false, error: 'Email is required' });
     if (!addressId) return res.status(400).json({ success: false, error: 'Address ID is required' });
 
-    const customer = await findCustomerByEmail(email);
+    const customer = await findCustomerByEmail(email, storeConfig);
     if (!customer) {
       return res.status(404).json({ success: false, error: 'Customer not found in Shopify' });
     }
 
-    // Resolve numeric/short ID to the full Shopify GID
     const numericId = String(addressId);
     const matched = customer.addresses.find(a =>
       a.id === addressId ||
@@ -252,9 +237,9 @@ router.post('/delete', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Address not found for this customer' });
     }
 
-    console.log(`[Address] Deleting address ${matched.id} for customer ${customer.id}`);
+    console.log(`[Address][${storeConfig.storeName}] Deleting address ${matched.id} for customer ${customer.id}`);
 
-    const result = await deleteCustomerAddress(customer.id, matched.id);
+    const result = await deleteCustomerAddress(customer.id, matched.id, storeConfig);
 
     const userErrors = result?.data?.customerAddressDelete?.userErrors;
     if (userErrors && userErrors.length > 0) {

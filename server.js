@@ -3,14 +3,20 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
+const { getAllowedShops } = require('./utils/tenantResolver');
+const tenantMiddleware   = require('./middleware/tenantMiddleware');
+
 const app = express();
 
-// ── CORS — manual handler to guarantee preflight works ──
-const ALLOWED_ORIGINS = [
-  'https://minumancom.myshopify.com',
+// ── CORS — built dynamically from all configured stores ──────────────────────
+const STATIC_ORIGINS = [
   'https://www.minuman.com',
   'https://minuman.com',
 ];
+
+// Add every SHOP_* domain as https://<shop>
+const shopOrigins = getAllowedShops().map(shop => `https://${shop}`);
+const ALLOWED_ORIGINS = [...new Set([...STATIC_ORIGINS, ...shopOrigins])];
 
 function isOriginAllowed(origin) {
   if (!origin) return true; // allow server-to-server / curl
@@ -19,7 +25,6 @@ function isOriginAllowed(origin) {
   return false;
 }
 
-// Apply CORS headers to EVERY request (including OPTIONS preflight)
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (isOriginAllowed(origin)) {
@@ -29,7 +34,6 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
 
-  // Respond to preflight immediately
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
@@ -38,19 +42,23 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-// ── Health check ─────────────────────────────────
+// ── Health check ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'backend-address-minuman' });
 });
 
-// ── Routes ───────────────────────────────────────
+// ── Routes ───────────────────────────────────────────────────────────────────
+// tenantMiddleware runs first to resolve req.storeConfig from req.body.request_from
 const addressRoutes = require('./routes/address');
-app.use('/api/address', addressRoutes);
+app.use('/api/address', tenantMiddleware, addressRoutes);
 
-// ── Start ────────────────────────────────────────
+const customerRoutes = require('./routes/customer');
+app.use('/api/customer', tenantMiddleware, customerRoutes);
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  console.log(`SHOP: ${process.env.SHOP}`);
-  console.log(`API_VERSION: ${process.env.API_VERSION}`);
+  console.log(`Default shop: ${process.env.SHOP}`);
+  console.log(`Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });
