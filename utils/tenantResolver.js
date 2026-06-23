@@ -17,11 +17,20 @@ function buildTenantMap() {
     if (!key.startsWith('REQUEST_FROM_') || !value) continue;
 
     const suffix = key.slice('REQUEST_FROM_'.length); // e.g. "KAPITTALL"
+
+    // DOMAIN_<SUFFIX> is a comma-separated list of custom/storefront domains
+    // (e.g. "kptll.com,kapitall-jakarta.myshopify.com") used for the CORS allowlist.
+    const domains = (process.env[`DOMAIN_${suffix}`] || '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+
     map[value] = {
       token:      process.env[`SHOPIFY_ACCESS_TOKEN_${suffix}`],
       shop:       process.env[`SHOP_${suffix}`],
       apiVersion: process.env[`API_VERSION_${suffix}`] || process.env.API_VERSION || '2026-01',
       storeName:  suffix.toLowerCase(),
+      domains,
     };
   }
 
@@ -42,14 +51,18 @@ function resolveTenant(requestFrom) {
 }
 
 /**
- * Returns all shop domains that are configured (for CORS allowlist).
+ * Returns all domains that are configured (for CORS allowlist):
+ *   - every store's myshopify domain (SHOP_*)
+ *   - every custom/storefront domain (DOMAIN_*)
+ * Returns bare hostnames (e.g. "kptll.com"); the caller prefixes the scheme.
  */
 function getAllowedShops() {
-  const shops = [DEFAULT_STORE.shop].filter(Boolean);
+  const domains = [DEFAULT_STORE.shop].filter(Boolean);
   for (const config of Object.values(TENANT_MAP)) {
-    if (config.shop) shops.push(config.shop);
+    if (config.shop) domains.push(config.shop);
+    if (config.domains) domains.push(...config.domains);
   }
-  return shops;
+  return [...new Set(domains)];
 }
 
 module.exports = { resolveTenant, DEFAULT_STORE, getAllowedShops };

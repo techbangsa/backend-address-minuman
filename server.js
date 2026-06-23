@@ -14,8 +14,15 @@ const STATIC_ORIGINS = [
   'https://minuman.com',
 ];
 
-// Add every SHOP_* domain as https://<shop>
-const shopOrigins = getAllowedShops().map(shop => `https://${shop}`);
+// Add every configured domain (SHOP_* + DOMAIN_*) as an https origin.
+// For custom (non-myshopify) apex domains, also allow the www. variant.
+const shopOrigins = getAllowedShops().flatMap(domain => {
+  const origins = [`https://${domain}`];
+  if (!/\.myshopify\.com$/.test(domain) && !domain.startsWith('www.')) {
+    origins.push(`https://www.${domain}`);
+  }
+  return origins;
+});
 const ALLOWED_ORIGINS = [...new Set([...STATIC_ORIGINS, ...shopOrigins])];
 
 function isOriginAllowed(origin) {
