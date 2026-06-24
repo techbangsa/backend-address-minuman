@@ -241,6 +241,11 @@ router.post('/delete', async (req, res) => {
 
     const result = await deleteCustomerAddress(customer.id, matched.id, storeConfig);
 
+    if (result?.errors && result.errors.length > 0) {
+      console.error('[Address] GraphQL errors:', result.errors);
+      return res.status(400).json({ success: false, error: result.errors[0].message, errors: result.errors });
+    }
+
     const userErrors = result?.data?.customerAddressDelete?.userErrors;
     if (userErrors && userErrors.length > 0) {
       console.error('[Address] userErrors:', userErrors);
@@ -249,7 +254,7 @@ router.post('/delete', async (req, res) => {
 
     return res.json({
       success: true,
-      deletedId: result?.data?.customerAddressDelete?.deletedCustomerAddressId,
+      deletedId: result?.data?.customerAddressDelete?.deletedAddressId,
     });
   } catch (err) {
     console.error('[Address] Error deleting address:', err);

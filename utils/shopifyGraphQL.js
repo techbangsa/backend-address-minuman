@@ -235,7 +235,7 @@ async function deleteCustomerAddress(customerId, addressId, storeConfig = DEFAUL
   const mutation = `
     mutation customerAddressDelete($customerId: ID!, $addressId: ID!) {
       customerAddressDelete(customerId: $customerId, addressId: $addressId) {
-        deletedCustomerAddressId
+        deletedAddressId
         userErrors {
           field
           message
