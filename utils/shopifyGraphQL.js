@@ -2,6 +2,18 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const { DEFAULT_STORE } = require('./tenantResolver');
+const { normalizeIndonesianProvince } = require('./indonesiaProvinces');
+
+/**
+ * Shopify validates `province` against a fixed per-country list, and for
+ * Indonesia that list doesn't match the official long-form names Google's
+ * Geocoding API returns (e.g. "Daerah Khusus Ibukota Jakarta" vs "Jakarta").
+ * Normalize before sending, otherwise the mutation fails with "Province is invalid".
+ */
+function resolveProvince(province, country) {
+  if (/indonesia/i.test(country || '')) return normalizeIndonesianProvince(province);
+  return province;
+}
 
 /**
  * Execute a Shopify Admin GraphQL query/mutation for a specific store.
@@ -125,15 +137,18 @@ async function createCustomerAddress(customerId, addressData, storeConfig = DEFA
 
   const address2 = hasParsedComponents ? (addressData.district || '') : '';
 
+  const country  = (hasParsedComponents ? addressData.country  : parsed.country)  || 'Indonesia';
+  const province = (hasParsedComponents ? addressData.province : parsed.province) || '';
+
   const variables = {
     customerId,
     address: {
       address1,
       address2,
-      city:     (hasParsedComponents ? addressData.city     : parsed.city)     || '',
-      province: (hasParsedComponents ? addressData.province : parsed.province) || '',
-      country:  (hasParsedComponents ? addressData.country  : parsed.country)  || 'Indonesia',
-      zip:      (hasParsedComponents ? addressData.zip      : parsed.zip)      || '',
+      city:     (hasParsedComponents ? addressData.city : parsed.city) || '',
+      province: resolveProvince(province, country),
+      country,
+      zip:      (hasParsedComponents ? addressData.zip  : parsed.zip) || '',
     },
   };
 
@@ -205,6 +220,9 @@ async function updateCustomerAddress(customerId, addressId, addressData, storeCo
 
   const address2 = hasParsedComponents ? (addressData.district || '') : '';
 
+  const country  = (hasParsedComponents ? addressData.country  : parsed.country)  || 'Indonesia';
+  const province = (hasParsedComponents ? addressData.province : parsed.province) || '';
+
   const variables = {
     customerId,
     addressId,
@@ -215,10 +233,10 @@ async function updateCustomerAddress(customerId, addressId, addressData, storeCo
       phone:     addressData.phone     || '',
       address1,
       address2,
-      city:     (hasParsedComponents ? addressData.city     : parsed.city)     || '',
-      province: (hasParsedComponents ? addressData.province : parsed.province) || '',
-      country:  (hasParsedComponents ? addressData.country  : parsed.country)  || 'Indonesia',
-      zip:      (hasParsedComponents ? addressData.zip      : parsed.zip)      || '',
+      city:     (hasParsedComponents ? addressData.city : parsed.city) || '',
+      province: resolveProvince(province, country),
+      country,
+      zip:      (hasParsedComponents ? addressData.zip  : parsed.zip) || '',
     },
   };
 
